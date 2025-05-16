@@ -1,7 +1,7 @@
 from agents import Agent, function_tool, set_tracing_disabled
 from agents.extensions.models.litellm_model import LitellmModel
 from agents.mcp import MCPServerStdio
-from agents import Runner
+from agents import Runner, trace
 import random
 import os
 from typing_extensions import TypedDict, Any
@@ -36,13 +36,22 @@ if os.path.exists("tools"):
     ## import all tools from the /tools folder, they are python files
     for file in os.listdir("tools"):
         if file.endswith(".py"):
+            
+            print(f"Loading tool: {file}")
             with open(f"tools/{file}", "r") as f:
                 ## eval the file, then import all the functions from the file individually
                 exec(f.read())
                 for name, func in list(locals().items()):
-                    if callable(func):
-                        tools[name] = func
+                    print(name)
+                    if name == "custom_tool":
+                        tools[file] = func
+                        
+print("**********************")
+print("Tools loaded:")
+for tool in tools:
+    print(tool)
 
+print("**********************")
 
 class AgentDefinition(TypedDict):
     name: str
@@ -174,7 +183,7 @@ async def orchestrate_task(task_description: str) -> dict:
 
 
 async def main():
-    set_tracing_disabled(True)
+
     async with MCPServerStdio(
             params={
                 "command": "npx",
@@ -186,60 +195,28 @@ async def main():
             }
         ) as server:
 
-            agent_creator_system_prompt = f"""
-                You create agents based on the user's request. Use your tools to create any required agents.
-                Give specific, detailed instructions for the agent's system prompt. Make sure to include any information an agent might need, such as the process they'll need to follow, or any context about their purpose.
-                Give the name for any tools you need them to have access to, tools will be fetched or created based on the name.
+            ## given an agent name, search the agents.json file for an agent with the given name and instructions and tools
+            agent_name = "CurriculumDocSearchAgent"
+            agent_info = agents.get(agent_name, None)
+            if agent_info:
+                print(f"Agent {agent_name} found: {agent_info}")
+            else:
+                print(f"Agent {agent_name} not found.")
                 
-                Currently, these agents already exist:
-                {[agent['name'] for agent in agents.values()]}
-                
-                Don't create an agent that already exists, instead, inform the user that the agent already exists.
-                
-                You have access to search the internet using Tavily to find more information that might help you create the best agent.
-                Don't confirm with the user about anything, just create the agent.
-                """
-            #print(agent_creator_system_prompt)
-        
-            agent_creator = Agent(
-                name="Agent Creator",
-                instructions=agent_creator_system_prompt,
-                tools=[create_agent],
-                mcp_servers=[server],
-            )
-            result = await Runner.run(agent_creator, "Create an agent that can use the pgvector_rag_query tool to search for curriculum documents. The agent should be able to take a query and return the top 5 most relevant documents from the curriculum.")
-            print(result.final_output)
+            ## find the tools
+            tool_name = "pgvector_rag_query.py"
+            tool_info = tools.get(tool_name, None)
+            print(tools)
+            with trace("agent_swarm") as t:
+                agent_creator = Agent(
+                    name="Agent Creator",
+                    instructions=agent_info["instructions"],
+                    tools=[tool_info],
+                    # mcp_servers=[server],
+                )
+                result = await Runner.run(agent_creator, "How do I create a new agent?")
+                print(result.final_output)
             
-            # reviewer_agent = Agent(
-            #     name=agents["AgentReviewer"]["name"],
-            #     instructions=agents["AgentReviewer"]["instructions"],
-            #     tools=[review_agent, create_agent],
-            #     mcp_servers=[server],
-            # )
-            # agent_name = "ToolCreatorAgent"
-            # result = await Runner.run(reviewer_agent, f"Review, improve, and recreate the agent: {agent_name}")
-            # print(result.final_output)
-            # return result.final_output
-            
-            # tool_creator_agent = Agent(
-            #     name="ToolCreatorAgent",
-            #     instructions=agents["ToolCreatorAgent"]["instructions"],
-            #     tools=[create_tool],
-            #     mcp_servers=[server],
-            #     model=LitellmModel(model="ollama_chat/qwq")
-            # )
-            # result = await Runner.run(agent, "Create a tool that uses a pgvector index to implement a RAG system. Use your tools to create the tool.")
-            # print(result.final_output)
-            # return result.final_output
-            
-            # tool_reviewer_agent = Agent(
-            #     name="ToolReviewer",
-            #     instructions=agents["ToolReviewer"]["instructions"],
-            #     tools=[review_tool, create_tool],
-            #     mcp_servers=[server],
-            # )
-            # result = await Runner.run(tool_reviewer_agent, "Review shadertoy_example_search. Rewrite the tool. Do not give instructions to the user. Do not reply to the user. Just rewrite the tool.")
-            # print(result.final_output)
 
 
 if __name__ == "__main__":

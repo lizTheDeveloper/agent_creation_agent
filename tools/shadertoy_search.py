@@ -2,7 +2,7 @@ import os
 from typing import List, Dict
 import requests
 
-def search_shadertoy(keyword: str, limit: int = 5) -> List[Dict[str, str]]:
+def custom_tool(keyword: str, limit: int = 5) -> List[Dict[str, str]]:
     """Search for ShaderToy examples by keyword and return a list of shaders with their name and description."""
     api_url = "https://www.shadertoy.com/api/v1/shaders"
     params = {

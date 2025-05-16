@@ -1,5 +1,5 @@
 @function_tool
-def retrieve_documents(query: str, num_results: int) -> list:
+def custom_tool(query: str, num_results: int) -> list:
     """Retrieves relevant documents using a FAISS index for a given query."""
     import faiss
     import numpy as np
